@@ -21,6 +21,7 @@ module Paperclip
         :hash_digest           => "SHA1",
         :interpolator          => Paperclip::Interpolations,
         :only_process          => [],
+        :no_touch_timestamp    => false,
         :path                  => ":rails_root/public:url",
         :preserve_files        => false,
         :processors            => [:thumbnail],
@@ -338,6 +339,7 @@ module Paperclip
     # inconsistencies in timing of S3 commands. It's possible that calling
     # #reprocess! will lose data if the files are not kept.
     def reprocess!(*style_args)
+      @options[:no_touch_timestamp] = true
       saved_only_process, @options[:only_process] = @options[:only_process], style_args
       saved_preserve_files, @options[:preserve_files] = @options[:preserve_files], true
       begin
@@ -434,8 +436,15 @@ module Paperclip
     def assign_attributes
       @queued_for_write[:original] = @file
       assign_file_information
+
       assign_fingerprint { @file.fingerprint }
       assign_timestamps
+      unless @options[:no_touch_timestamp]
+        assign_timestamps
+        warn "Assigning timestamps"
+      else
+        warn "Skipping timestamp assignment"
+      end
     end
 
     def assign_file_information
