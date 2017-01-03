@@ -433,9 +433,6 @@ module Paperclip
       assign_fingerprint
       unless @options[:no_touch_timestamp]
         assign_timestamps
-        warn "Assigning timestamps"
-      else
-        warn "Skipping timestamp assignment"
       end
     end
 
