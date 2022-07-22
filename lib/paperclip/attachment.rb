@@ -34,6 +34,7 @@ module Paperclip
         :use_timestamp         => true,
         :whiny                 => Paperclip.options[:whiny] || Paperclip.options[:whiny_thumbnails],
         :validate_media_type   => true,
+        :adapter_options       => { hash_digest: Digest::MD5 },
         :check_validity_before_processing => true
       }
     end
@@ -84,7 +85,7 @@ module Paperclip
       @errors                = {}
       @dirty                 = false
       @interpolator          = options[:interpolator]
-      @url_generator         = options[:url_generator].new(self, @options)
+      @url_generator         = options[:url_generator].new(self)
       @source_file_options   = options[:source_file_options]
       @whiny                 = options[:whiny]
 
@@ -98,7 +99,8 @@ module Paperclip
     # attachment:
     #   new_user.avatar = old_user.avatar
     def assign(uploaded_file)
-      @file = Paperclip.io_adapters.for(uploaded_file)
+      @file = Paperclip.io_adapters.for(uploaded_file,
+                                        @options[:adapter_options])
       ensure_required_accessors!
       ensure_required_validations!
 
@@ -239,6 +241,10 @@ module Paperclip
     # the instance's errors and returns false, cancelling the save.
     def save
       flush_deletes unless @options[:keep_old_files]
+      process = only_process
+      if process.any? && !process.include?(:original)
+        @queued_for_write.except!(:original)
+      end
       flush_writes
       @dirty = false
       true
@@ -430,7 +436,9 @@ module Paperclip
     def assign_attributes
       @queued_for_write[:original] = @file
       assign_file_information
-      assign_fingerprint
+
+      assign_fingerprint { @file.fingerprint }
+
       unless @options[:no_touch_timestamp]
         assign_timestamps
       end
@@ -524,15 +532,18 @@ module Paperclip
       begin
         raise RuntimeError.new("Style #{name} has no processors defined.") if style.processors.blank?
         intermediate_files = []
+        original = @queued_for_write[:original]
 
-        @queued_for_write[name] = style.processors.inject(@queued_for_write[:original]) do |file, processor|
+        @queued_for_write[name] = style.processors.
+          reduce(original) do |file, processor|
           file = Paperclip.processor(processor).make(file, style.processor_options, self)
           intermediate_files << file unless file == @queued_for_write[:original]
           file
         end
 
         unadapted_file = @queued_for_write[name]
-        @queued_for_write[name] = Paperclip.io_adapters.for(@queued_for_write[name])
+        @queued_for_write[name] = Paperclip.io_adapters.
+          for(@queued_for_write[name], @options[:adapter_options])
         unadapted_file.close if unadapted_file.respond_to?(:close)
         @queued_for_write[name]
       rescue Paperclip::Errors::NotIdentifiedByImageMagickError => e
