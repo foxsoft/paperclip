@@ -438,6 +438,7 @@ module Paperclip
       assign_file_information
 
       assign_fingerprint { @file.fingerprint }
+
       unless @options[:no_touch_timestamp]
         assign_timestamps
       end
